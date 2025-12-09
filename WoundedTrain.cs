@@ -29,16 +29,17 @@ namespace Oxide.Plugins
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
         
         // Cached gesture IDs to avoid repeated allocation
-        // Using GestureId enum values from Rust API
+        // Using numeric gesture IDs from Rust game
+        // IDs: 0=Wave, 1=Shrug, 2=Victory, 3=ThumbsUp, 4=Chicken, 5=Hurry, 6=Whoa
         private static readonly uint[] AvailableGestures = new uint[]
         {
-            (uint)GestureId.Wave,
-            (uint)GestureId.Shrug,
-            (uint)GestureId.Victory,
-            (uint)GestureId.ThumbsUp,
-            (uint)GestureId.Chicken,
-            (uint)GestureId.Hurry,
-            (uint)GestureId.Whoa
+            0, // Wave
+            1, // Shrug
+            2, // Victory
+            3, // ThumbsUp
+            4, // Chicken
+            5, // Hurry
+            6  // Whoa
         };
         
         #endregion
@@ -540,7 +541,7 @@ namespace Oxide.Plugins
             {
                 if (npc != null && !npc.IsDestroyed)
                 {
-                    npc.Server_StartGesture((uint)GestureId.Wave);
+                    npc.Server_StartGesture(0); // Wave gesture
                 }
             });
         }
