@@ -26,7 +26,8 @@ namespace Oxide.Plugins
         private Dictionary<ulong, TrainData> activeTrains = new Dictionary<ulong, TrainData>();
         
         // --- Prefabs ---
-        private const string ScientistPrefab = "assets/prefabs/npc/scientist/scientist.prefab";
+        // Correct Rust NPC prefab path for human NPCs
+        private const string ScientistPrefab = "assets/rust.ai/agents/npcplayer/humannpc/scientist/scientistnpc_roam.prefab";
         private const string GhostPrefab = "assets/prefabs/visualization/sphere.prefab"; 
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
         
