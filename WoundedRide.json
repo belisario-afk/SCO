@@ -1,0 +1,11 @@
+{
+  "RideDuration": 30.0,
+  "AllowDismount": false,
+  "AutoHealAfter": true,
+  "Messages": {
+    "YouAreWounded": "<color=red>You lost! You are now wounded for {0} seconds.</color>",
+    "YouCanRide": "<color=green>You won! Ride the wounded losers for {0} seconds!</color>",
+    "RideEnded": "<color=yellow>Ride session ended.</color>",
+    "SessionStarted": "<color=orange>Ride session started! Duration: {0} seconds</color>"
+  }
+}
