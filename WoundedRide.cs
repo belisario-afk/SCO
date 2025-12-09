@@ -206,10 +206,16 @@ namespace Oxide.Plugins
             if (player == null || player.IsWounded())
                 return;
                 
+            // Create HitInfo for wounding
+            HitInfo hitInfo = new HitInfo();
+            hitInfo.damageTypes.Add(Rust.DamageType.Generic, player.health - 2f);
+            hitInfo.Initiator = player;
+            hitInfo.WeaponPrefab = null;
+            
             // Set player to wounded state
             player.health = 2f; // Low health to maintain wounded state
             player.metabolism.bleeding.value = 0f; // Stop bleeding
-            player.BecomeWounded();
+            player.BecomeWounded(hitInfo);
             
             Puts($"[DEBUG] Player {player.displayName} set to wounded state");
         }
