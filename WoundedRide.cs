@@ -14,7 +14,7 @@ namespace Oxide.Plugins
         #region Fields
         
         private Configuration config;
-        private Dictionary<ulong, RideSession> activeSessions = new Dictionary<ulong, RideSession>();
+        private Dictionary<string, RideSession> activeSessions = new Dictionary<string, RideSession>();
         
         #endregion
         
@@ -171,10 +171,10 @@ namespace Oxide.Plugins
             session.SessionTimer = timer.Once(config.RideDuration, () =>
             {
                 EndSession(session);
-                activeSessions.Remove(sessionId.GetHashCode());
+                activeSessions.Remove(sessionId);
             });
             
-            activeSessions[sessionId.GetHashCode()] = session;
+            activeSessions[sessionId] = session;
             
             return sessionId;
         }
@@ -188,14 +188,12 @@ namespace Oxide.Plugins
         {
             if (string.IsNullOrEmpty(sessionId))
                 return;
-                
-            int hashCode = sessionId.GetHashCode();
             
-            if (activeSessions.ContainsKey(hashCode))
+            if (activeSessions.ContainsKey(sessionId))
             {
                 Puts($"[API] EndRideSession called for session: {sessionId}");
-                EndSession(activeSessions[hashCode]);
-                activeSessions.Remove(hashCode);
+                EndSession(activeSessions[sessionId]);
+                activeSessions.Remove(sessionId);
             }
         }
         
