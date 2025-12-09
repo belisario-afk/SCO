@@ -16,6 +16,7 @@ namespace Oxide.Plugins
         private const string PermUse = "woundedtrain.use";
         private const string PermFinale = "woundedtrain.finale";
         private const string PermAdmin = "woundedtrain.admin";
+        private const string PermManager = "woundedtrain.manager";
         
         // --- Configuration ---
         private Configuration config;
@@ -133,11 +134,15 @@ namespace Oxide.Plugins
             permission.RegisterPermission(PermUse, this);
             permission.RegisterPermission(PermFinale, this);
             permission.RegisterPermission(PermAdmin, this);
+            permission.RegisterPermission(PermManager, this);
             
             // Register commands
             AddCovalenceCommand("humantrain", nameof(CmdHumanTrain));
             AddCovalenceCommand("finale", nameof(CmdFinale));
             AddCovalenceCommand("cleantrain", nameof(CmdCleanTrain));
+            
+            Puts("WoundedTrain v2.1.0 initialized successfully");
+            Puts($"Permissions registered: {PermUse}, {PermFinale}, {PermAdmin}, {PermManager}");
         }
 
         private void Unload()
@@ -231,11 +236,16 @@ namespace Oxide.Plugins
         [ChatCommand("humantrain")]
         private void CmdHumanTrain(BasePlayer player, string command, string[] args)
         {
+            Puts($"[DEBUG] Player {player.displayName} ({player.userID}) executed /humantrain command");
+            
             if (!HasPermission(player, PermUse))
             {
+                Puts($"[DEBUG] Player {player.displayName} lacks permission {PermUse}");
                 SendReply(player, config.Messages.NoPermission);
                 return;
             }
+            
+            Puts($"[DEBUG] Permission check passed for {player.displayName}");
             
             // Check cooldown
             if (activeTrains.ContainsKey(player.userID))
@@ -245,6 +255,7 @@ namespace Oxide.Plugins
                 if (timeSinceLastCommand < config.CommandCooldown)
                 {
                     int remainingTime = Mathf.CeilToInt(config.CommandCooldown - timeSinceLastCommand);
+                    Puts($"[DEBUG] Command on cooldown for {player.displayName}, {remainingTime}s remaining");
                     SendReply(player, string.Format(config.Messages.CommandCooldown, remainingTime));
                     return;
                 }
@@ -253,17 +264,20 @@ namespace Oxide.Plugins
             // Cleanup existing train if any
             if (activeTrains.ContainsKey(player.userID))
             {
+                Puts($"[DEBUG] Cleaning up existing train for {player.displayName}");
                 CleanupTrain(activeTrains[player.userID]);
             }
             
-            Puts($"Player {player.displayName} is creating a Human Train...");
+            Puts($"[DEBUG] Starting train creation for {player.displayName}");
 
             if (!CreateTrain(player))
             {
+                Puts($"[DEBUG] Train creation FAILED for {player.displayName}");
                 SendReply(player, config.Messages.TrainCreationFailed);
                 return;
             }
 
+            Puts($"[DEBUG] Train creation SUCCESS for {player.displayName}");
             SendReply(player, config.Messages.TrainReady);
         }
 
@@ -317,6 +331,8 @@ namespace Oxide.Plugins
         
         private bool CreateTrain(BasePlayer player)
         {
+            Puts($"[DEBUG] CreateTrain: Starting for player {player.displayName}");
+            
             var train = new TrainData
             {
                 Owner = player,
@@ -327,23 +343,29 @@ namespace Oxide.Plugins
             Vector3 spawnPos = player.transform.position + (player.transform.forward * 3f);
             spawnPos.y = GetGroundY(spawnPos) + config.GroundOffset;
             
+            Puts($"[DEBUG] CreateTrain: Attempting to spawn Ghost Engine at {spawnPos}");
+            Puts($"[DEBUG] CreateTrain: Using prefab: {GhostPrefab}");
+            
             train.GhostEngine = GameManager.server.CreateEntity(GhostPrefab, spawnPos);
             if (train.GhostEngine == null)
             {
-                LogError("Could not spawn Ghost Engine!");
+                LogError("Could not spawn Ghost Engine! Check if prefab path is correct.");
                 return false;
             }
             train.GhostEngine.Spawn();
-            Puts("Ghost Engine spawned successfully.");
+            Puts($"[DEBUG] Ghost Engine spawned successfully at {train.GhostEngine.transform.position}");
 
             // 2. Spawn the Puller NPCs (wounded, in front of the chair)
+            Puts($"[DEBUG] CreateTrain: Spawning {config.PullerCount} puller NPCs");
             for (int i = 0; i < config.PullerCount; i++)
             {
                 Vector3 offset = new Vector3(0, 0, 2f + (i * config.NPCSpacing));
                 SpawnPullerNPC(train, offset);
             }
+            Puts($"[DEBUG] CreateTrain: Spawned {train.PullerNPCs.Count} puller NPCs");
 
             // 3. Spawn the Captain's Chair (in the middle)
+            Puts($"[DEBUG] CreateTrain: Spawning Captain's Chair");
             if (!SpawnChair(train))
             {
                 CleanupTrain(train);
@@ -351,25 +373,30 @@ namespace Oxide.Plugins
             }
 
             // 4. Spawn the Sitting NPCs behind the chair
+            Puts($"[DEBUG] CreateTrain: Spawning {config.TrainLength} sitting NPCs");
             for (int i = 0; i < config.TrainLength; i++)
             {
                 Vector3 offset = new Vector3(0, 0, -2f - (i * config.NPCSpacing)); 
                 SpawnSittingNPC(train, offset);
             }
+            Puts($"[DEBUG] CreateTrain: Spawned {train.NPCs.Count} sitting NPCs");
 
             // 5. Start Physics Loop
+            Puts($"[DEBUG] CreateTrain: Starting physics timer");
             train.ControlTimer = timer.Repeat(config.UpdateInterval, -1, () =>
             {
                 UpdateTrainPhysics(train);
             });
             
             // 6. Start Gesture Loop
+            Puts($"[DEBUG] CreateTrain: Starting gesture timer");
             train.GestureTimer = timer.Repeat(config.GestureInterval, -1, () =>
             {
                 PerformRandomGestures(train);
             });
             
             activeTrains[player.userID] = train;
+            Puts($"[DEBUG] CreateTrain: Train created successfully. Total NPCs: {train.NPCs.Count + train.PullerNPCs.Count}");
             return true;
         }
         
@@ -479,22 +506,28 @@ namespace Oxide.Plugins
 
         private bool SpawnChair(TrainData train)
         {
+            Puts($"[DEBUG] SpawnChair: Attempting to spawn chair at {train.GhostEngine.transform.position}");
+            Puts($"[DEBUG] SpawnChair: Using prefab: {ChairPrefab}");
+            
             train.CaptainChair = GameManager.server.CreateEntity(ChairPrefab, train.GhostEngine.transform.position) as BaseMountable;
             if (train.CaptainChair == null)
             {
-                LogError("Could not spawn Captain's Chair!");
+                LogError("Could not spawn Captain's Chair! Check if prefab path is correct.");
                 return false;
             }
             
             train.CaptainChair.SetParent(train.GhostEngine);
             train.CaptainChair.transform.localPosition = new Vector3(0, 0, 0); 
             train.CaptainChair.Spawn();
-            Puts("Captain's Chair spawned successfully.");
+            Puts($"[DEBUG] Captain's Chair spawned successfully at {train.CaptainChair.transform.position}");
             return true;
         }
         
         private void SpawnPullerNPC(TrainData train, Vector3 localPos)
         {
+            Puts($"[DEBUG] SpawnPullerNPC: Attempting to spawn puller NPC at offset {localPos}");
+            Puts($"[DEBUG] SpawnPullerNPC: Using prefab: {ScientistPrefab}");
+            
             var npc = GameManager.server.CreateEntity(ScientistPrefab, train.GhostEngine.transform.position) as BasePlayer;
             if (npc == null)
             {
@@ -503,6 +536,7 @@ namespace Oxide.Plugins
             }
 
             npc.Spawn();
+            Puts($"[DEBUG] SpawnPullerNPC: NPC spawned, setting wounded state");
             
             // Force wounded state (pulling the sled)
             npc.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, true);
@@ -513,10 +547,13 @@ namespace Oxide.Plugins
             npc.transform.localRotation = Quaternion.Euler(0, 180, 0); // Face forward
             
             train.PullerNPCs.Add(npc);
+            Puts($"[DEBUG] SpawnPullerNPC: Puller NPC added to train (Total pullers: {train.PullerNPCs.Count})");
         }
         
         private void SpawnSittingNPC(TrainData train, Vector3 localPos)
         {
+            Puts($"[DEBUG] SpawnSittingNPC: Attempting to spawn sitting NPC at offset {localPos}");
+            
             var npc = GameManager.server.CreateEntity(ScientistPrefab, train.GhostEngine.transform.position) as BasePlayer;
             if (npc == null)
             {
@@ -525,6 +562,7 @@ namespace Oxide.Plugins
             }
 
             npc.Spawn();
+            Puts($"[DEBUG] SpawnSittingNPC: NPC spawned, setting relaxed state");
             
             // Make them sit - set Relaxed flag
             npc.SetPlayerFlag(BasePlayer.PlayerFlags.Relaxed, true);
@@ -541,9 +579,12 @@ namespace Oxide.Plugins
             {
                 if (npc != null && !npc.IsDestroyed)
                 {
+                    Puts($"[DEBUG] SpawnSittingNPC: Triggering wave gesture for NPC");
                     npc.Server_StartGesture(0); // Wave gesture
                 }
             });
+            
+            Puts($"[DEBUG] SpawnSittingNPC: Sitting NPC added to train (Total sitting: {train.NPCs.Count})");
         }
         
         private void PerformRandomGestures(TrainData train)

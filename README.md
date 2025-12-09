@@ -31,12 +31,14 @@ A Rust Oxide uMod plugin that creates a controllable "human train" made of wound
 
 - `woundedtrain.use` - Allows players to create and clean trains
 - `woundedtrain.finale` - Allows players to use the finale command
+- `woundedtrain.manager` - Manager permission for server management
 - `woundedtrain.admin` - Reserved for future admin features
 
 ### Grant Permissions
 ```
 oxide.grant user <username> woundedtrain.use
 oxide.grant group <groupname> woundedtrain.use
+oxide.grant group moderator woundedtrain.manager
 ```
 
 ## Commands
