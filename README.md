@@ -3,13 +3,17 @@
 A Rust Oxide uMod plugin that creates a controllable "human train" made of wounded NPCs. Players can mount a captain's chair and steer the train around the map.
 
 ## Version
-2.0.0
+2.1.0
 
 ## Features
 
-- **Controllable Human Train**: Create a train of wounded NPCs that follows your commands
+- **Controllable Human Train**: Create a train of NPCs with different roles
+  - **Puller NPCs**: Wounded NPCs in front pulling the sled
+  - **Captain's Chair**: In the middle for the player to control
+  - **Sitting NPCs**: Behind the chair, performing random gestures
 - **Multiple Players**: Each player can have their own independent train
 - **Reverse Movement**: Move forward and backward (configurable)
+- **Animated Gestures**: Sitting NPCs perform random gestures (wave, shrug, victory, thumbsup, chicken, hurry, whoa)
 - **Grand Finale**: Launch all NPCs into the air with physics effects
 - **Auto Cleanup**: Automatically cleanup trains when players dismount (configurable)
 - **Customizable Configuration**: All settings can be configured via JSON config file
@@ -41,7 +45,10 @@ oxide.grant group <groupname> woundedtrain.use
 
 - `/humantrain` - Create a human train
   - Requires: `woundedtrain.use` permission
-  - Creates a train of wounded NPCs that you can control
+  - Creates a train with:
+    - 2 wounded NPCs in front (pullers) in wounded/crawling state
+    - Captain's chair in the middle for steering
+    - 30 sitting NPCs behind performing random gestures
   - Mount the captain's chair to steer
   - Use W/A/S/D keys to move and turn
 
@@ -70,6 +77,7 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
 ```json
 {
   "TrainLength": 30,
+  "PullerCount": 2,
   "MoveSpeed": 30.0,
   "ReverseSpeed": 15.0,
   "TurnSpeed": 15.0,
@@ -82,6 +90,7 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
   "FinaleExplosionForce": 800.0,
   "FinaleSpreadForce": 100.0,
   "CommandCooldown": 5,
+  "GestureInterval": 10.0,
   "AllowReverse": true,
   "AutoCleanupOnDismount": true,
   "Messages": {
@@ -100,7 +109,8 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `TrainLength` | int | 30 | Number of NPCs in the train |
+| `TrainLength` | int | 30 | Number of sitting NPCs behind the chair |
+| `PullerCount` | int | 2 | Number of wounded NPCs in front pulling the sled |
 | `MoveSpeed` | float | 30.0 | Forward movement speed |
 | `ReverseSpeed` | float | 15.0 | Backward movement speed |
 | `TurnSpeed` | float | 15.0 | Turning speed |
@@ -113,6 +123,7 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
 | `FinaleExplosionForce` | float | 800.0 | Upward force for finale |
 | `FinaleSpreadForce` | float | 100.0 | Horizontal spread force for finale |
 | `CommandCooldown` | int | 5 | Cooldown between commands in seconds |
+| `GestureInterval` | float | 10.0 | How often sitting NPCs perform gestures (seconds) |
 | `AllowReverse` | bool | true | Enable backward movement |
 | `AutoCleanupOnDismount` | bool | true | Cleanup train when player dismounts |
 
@@ -163,10 +174,12 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
 
 ### How It Works
 1. Creates an invisible ghost engine (sphere) as the anchor point
-2. Spawns a captain's chair parented to the ghost engine
-3. Spawns wounded NPCs in a line, parented to the ghost engine
-4. Player mounts the chair and controls the ghost engine's position and rotation
-5. All parented entities move together, creating the "train" effect
+2. Spawns 2 wounded puller NPCs in front (crawling/wounded state) facing forward
+3. Spawns a captain's chair in the middle parented to the ghost engine
+4. Spawns sitting NPCs behind the chair, parented to the ghost engine
+5. Sitting NPCs perform random gestures every 10 seconds (wave, shrug, victory, etc.)
+6. Player mounts the chair and controls the ghost engine's position and rotation
+7. All parented entities move together, creating the "train" effect
 
 ### Protection
 - All train entities (NPCs, chair, ghost engine) are protected from damage

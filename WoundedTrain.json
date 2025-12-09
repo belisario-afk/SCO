@@ -1,5 +1,6 @@
 {
   "TrainLength": 30,
+  "PullerCount": 2,
   "MoveSpeed": 30.0,
   "ReverseSpeed": 15.0,
   "TurnSpeed": 15.0,
@@ -12,6 +13,7 @@
   "FinaleExplosionForce": 800.0,
   "FinaleSpreadForce": 100.0,
   "CommandCooldown": 5,
+  "GestureInterval": 10.0,
   "AllowReverse": true,
   "AutoCleanupOnDismount": true,
   "Messages": {

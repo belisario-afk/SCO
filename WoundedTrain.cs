@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace Oxide.Plugins
 {
-    [Info("WoundedTrain", "Jess", "2.0.0")]
+    [Info("WoundedTrain", "Jess", "2.1.0")]
     [Description("Creates a human train that you can sit on and steer.")]
     public class WoundedTrain : RustPlugin
     {
@@ -35,6 +35,7 @@ namespace Oxide.Plugins
         private class Configuration
         {
             public int TrainLength { get; set; } = 30;
+            public int PullerCount { get; set; } = 2;
             public float MoveSpeed { get; set; } = 30f;
             public float ReverseSpeed { get; set; } = 15f;
             public float TurnSpeed { get; set; } = 15f;
@@ -47,6 +48,7 @@ namespace Oxide.Plugins
             public float FinaleExplosionForce { get; set; } = 800f;
             public float FinaleSpreadForce { get; set; } = 100f;
             public int CommandCooldown { get; set; } = 5;
+            public float GestureInterval { get; set; } = 10f;
             public bool AllowReverse { get; set; } = true;
             public bool AutoCleanupOnDismount { get; set; } = true;
             public Messages Messages { get; set; } = new Messages();
@@ -67,9 +69,11 @@ namespace Oxide.Plugins
         {
             public BasePlayer Owner { get; set; }
             public List<BasePlayer> NPCs { get; set; } = new List<BasePlayer>();
+            public List<BasePlayer> PullerNPCs { get; set; } = new List<BasePlayer>();
             public BaseEntity GhostEngine { get; set; }
             public BaseMountable CaptainChair { get; set; }
             public Timer ControlTimer { get; set; }
+            public Timer GestureTimer { get; set; }
             public bool IsMovingForward { get; set; }
             public bool IsMovingBackward { get; set; }
             public bool IsTurningLeft { get; set; }
@@ -137,7 +141,7 @@ namespace Oxide.Plugins
             // Check if entity is part of any train
             foreach (var train in activeTrains.Values)
             {
-                if (entity is BasePlayer player && train.NPCs.Contains(player))
+                if (entity is BasePlayer player && (train.NPCs.Contains(player) || train.PullerNPCs.Contains(player)))
                     return true;
                 if (entity == train.CaptainChair)
                     return true;
@@ -152,7 +156,7 @@ namespace Oxide.Plugins
             // Prevent NPCs from recovering
             foreach (var train in activeTrains.Values)
             {
-                if (train.NPCs.Contains(player))
+                if (train.NPCs.Contains(player) || train.PullerNPCs.Contains(player))
                     return true;
             }
             return null;
@@ -318,24 +322,37 @@ namespace Oxide.Plugins
             train.GhostEngine.Spawn();
             Puts("Ghost Engine spawned successfully.");
 
-            // 2. Spawn the Captain's Chair
+            // 2. Spawn the Puller NPCs (wounded, in front of the chair)
+            for (int i = 0; i < config.PullerCount; i++)
+            {
+                Vector3 offset = new Vector3(0, 0, 2f + (i * config.NPCSpacing));
+                SpawnPullerNPC(train, offset);
+            }
+
+            // 3. Spawn the Captain's Chair (in the middle)
             if (!SpawnChair(train))
             {
                 CleanupTrain(train);
                 return false;
             }
 
-            // 3. Spawn the Line of NPCs
+            // 4. Spawn the Sitting NPCs behind the chair
             for (int i = 0; i < config.TrainLength; i++)
             {
                 Vector3 offset = new Vector3(0, 0, -2f - (i * config.NPCSpacing)); 
-                SpawnNPC(train, offset);
+                SpawnSittingNPC(train, offset);
             }
 
-            // 4. Start Physics Loop
+            // 5. Start Physics Loop
             train.ControlTimer = timer.Repeat(config.UpdateInterval, -1, () =>
             {
                 UpdateTrainPhysics(train);
+            });
+            
+            // 6. Start Gesture Loop
+            train.GestureTimer = timer.Repeat(config.GestureInterval, -1, () =>
+            {
+                PerformRandomGestures(train);
             });
             
             activeTrains[player.userID] = train;
@@ -391,13 +408,40 @@ namespace Oxide.Plugins
                 train.ControlTimer = null;
             }
             
+            if (train.GestureTimer != null)
+            {
+                train.GestureTimer.Destroy();
+                train.GestureTimer = null;
+            }
+            
             if (train.GhostEngine != null && !train.GhostEngine.IsDestroyed)
             {
                 train.GhostEngine.Kill();
                 train.GhostEngine = null;
             }
 
+            // Launch sitting NPCs
             foreach (var npc in train.NPCs)
+            {
+                if (npc == null || npc.IsDestroyed)
+                    continue;
+
+                npc.SetParent(null, true, true);
+
+                Rigidbody rb = npc.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.isKinematic = false; 
+                    rb.useGravity = true;
+                    Vector3 randomSpread = UnityEngine.Random.onUnitSphere * config.FinaleSpreadForce;
+                    rb.AddForce(Vector3.up * config.FinaleExplosionForce + randomSpread, ForceMode.Impulse); 
+                }
+                
+                Effect.server.Run("assets/bundled/prefabs/fx/gestures/guitarpluck.prefab", npc.transform.position);
+            }
+            
+            // Launch puller NPCs
+            foreach (var npc in train.PullerNPCs)
             {
                 if (npc == null || npc.IsDestroyed)
                     continue;
@@ -456,6 +500,90 @@ namespace Oxide.Plugins
             
             train.NPCs.Add(npc);
         }
+        
+        private void SpawnPullerNPC(TrainData train, Vector3 localPos)
+        {
+            var npc = GameManager.server.CreateEntity(ScientistPrefab, train.GhostEngine.transform.position) as BasePlayer;
+            if (npc == null)
+            {
+                LogWarning($"Could not spawn Puller NPC! Check prefab path: {ScientistPrefab}");
+                return;
+            }
+
+            npc.Spawn();
+            
+            // Force wounded state (pulling the sled)
+            npc.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, true);
+            npc.health = 5f; 
+            
+            npc.SetParent(train.GhostEngine);
+            npc.transform.localPosition = localPos;
+            npc.transform.localRotation = Quaternion.Euler(0, 180, 0); // Face forward
+            
+            train.PullerNPCs.Add(npc);
+        }
+        
+        private void SpawnSittingNPC(TrainData train, Vector3 localPos)
+        {
+            var npc = GameManager.server.CreateEntity(ScientistPrefab, train.GhostEngine.transform.position) as BasePlayer;
+            if (npc == null)
+            {
+                LogWarning($"Could not spawn Sitting NPC! Check prefab path: {ScientistPrefab}");
+                return;
+            }
+
+            npc.Spawn();
+            
+            // Make them sit - set Relaxed flag
+            npc.SetPlayerFlag(BasePlayer.PlayerFlags.Relaxed, true);
+            npc.health = 100f;
+            
+            npc.SetParent(train.GhostEngine);
+            npc.transform.localPosition = localPos;
+            npc.transform.localRotation = Quaternion.Euler(0, 0, 0);
+            
+            train.NPCs.Add(npc);
+            
+            // Trigger initial sitting gesture
+            timer.Once(0.5f, () =>
+            {
+                if (npc != null && !npc.IsDestroyed)
+                {
+                    npc.Server_StartGesture(GestureCollection.StringToGestureId("wave"));
+                }
+            });
+        }
+        
+        private void PerformRandomGestures(TrainData train)
+        {
+            if (train == null || train.NPCs == null)
+                return;
+            
+            // List of gesture IDs available in Rust
+            uint[] gestures = new uint[]
+            {
+                GestureCollection.StringToGestureId("wave"),
+                GestureCollection.StringToGestureId("shrug"),
+                GestureCollection.StringToGestureId("victory"),
+                GestureCollection.StringToGestureId("thumbsup"),
+                GestureCollection.StringToGestureId("chicken"),
+                GestureCollection.StringToGestureId("hurry"),
+                GestureCollection.StringToGestureId("whoa")
+            };
+            
+            foreach (var npc in train.NPCs)
+            {
+                if (npc == null || npc.IsDestroyed)
+                    continue;
+                
+                // Random chance to perform gesture
+                if (UnityEngine.Random.Range(0f, 1f) > 0.3f)
+                {
+                    uint randomGesture = gestures[UnityEngine.Random.Range(0, gestures.Length)];
+                    npc.Server_StartGesture(randomGesture);
+                }
+            }
+        }
 
         private float GetGroundY(Vector3 pos)
         {
@@ -478,6 +606,12 @@ namespace Oxide.Plugins
                 train.ControlTimer.Destroy();
                 train.ControlTimer = null;
             }
+            
+            if (train.GestureTimer != null)
+            {
+                train.GestureTimer.Destroy();
+                train.GestureTimer = null;
+            }
 
             foreach (var npc in train.NPCs)
             {
@@ -485,6 +619,13 @@ namespace Oxide.Plugins
                     npc.Kill();
             }
             train.NPCs.Clear();
+            
+            foreach (var npc in train.PullerNPCs)
+            {
+                if (npc != null && !npc.IsDestroyed)
+                    npc.Kill();
+            }
+            train.PullerNPCs.Clear();
 
             if (train.CaptainChair != null && !train.CaptainChair.IsDestroyed)
             {

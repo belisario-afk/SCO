@@ -2,6 +2,26 @@
 
 All notable changes to the WoundedTrain plugin will be documented in this file.
 
+## [2.1.0] - 2024-12-09
+
+### Added
+- **Sitting NPCs**: NPCs behind the chair now sit instead of being wounded
+- **Random Gestures**: Sitting NPCs perform random gestures (wave, shrug, victory, thumbsup, chicken, hurry, whoa)
+- **Puller NPCs**: 2 wounded NPCs in front of the chair pulling the sled
+- **Train Structure**: New layout with pullers in front, chair in middle, sitting NPCs behind
+- **Gesture Timer**: Configurable gesture interval (default 10 seconds)
+- **PullerCount Config**: Configure number of puller NPCs (default 2)
+- **GestureInterval Config**: Configure how often NPCs perform gestures
+
+### Changed
+- **Train Layout**: Chair is now in the middle instead of at the front
+- **NPC Behavior**: Most NPCs now sit and gesture instead of being wounded
+- **Version**: Updated to 2.1.0
+
+### Improved
+- More entertaining and visually appealing train composition
+- Better separation of NPC roles (pullers vs passengers)
+
 ## [2.0.0] - 2024-12-09
 
 ### Fixed
