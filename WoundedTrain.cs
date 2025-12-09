@@ -29,15 +29,16 @@ namespace Oxide.Plugins
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
         
         // Cached gesture IDs to avoid repeated allocation
+        // Using GestureId enum values from Rust API
         private static readonly uint[] AvailableGestures = new uint[]
         {
-            GestureCollection.StringToGestureId("wave"),
-            GestureCollection.StringToGestureId("shrug"),
-            GestureCollection.StringToGestureId("victory"),
-            GestureCollection.StringToGestureId("thumbsup"),
-            GestureCollection.StringToGestureId("chicken"),
-            GestureCollection.StringToGestureId("hurry"),
-            GestureCollection.StringToGestureId("whoa")
+            (uint)GestureId.Wave,
+            (uint)GestureId.Shrug,
+            (uint)GestureId.Victory,
+            (uint)GestureId.ThumbsUp,
+            (uint)GestureId.Chicken,
+            (uint)GestureId.Hurry,
+            (uint)GestureId.Whoa
         };
         
         #endregion
@@ -539,11 +540,7 @@ namespace Oxide.Plugins
             {
                 if (npc != null && !npc.IsDestroyed)
                 {
-                    uint waveGesture = GestureCollection.StringToGestureId("wave");
-                    if (waveGesture != 0)
-                    {
-                        npc.Server_StartGesture(waveGesture);
-                    }
+                    npc.Server_StartGesture((uint)GestureId.Wave);
                 }
             });
         }
@@ -562,10 +559,7 @@ namespace Oxide.Plugins
                 if (UnityEngine.Random.Range(0f, 1f) > 0.3f)
                 {
                     uint randomGesture = AvailableGestures[UnityEngine.Random.Range(0, AvailableGestures.Length)];
-                    if (randomGesture != 0)
-                    {
-                        npc.Server_StartGesture(randomGesture);
-                    }
+                    npc.Server_StartGesture(randomGesture);
                 }
             }
         }
