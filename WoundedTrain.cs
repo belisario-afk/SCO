@@ -1,6 +1,5 @@
 using Oxide.Core;
 using Oxide.Core.Plugins;
-using Oxide.Core.Configuration;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,9 +38,12 @@ namespace Oxide.Plugins
             public float MoveSpeed { get; set; } = 30f;
             public float ReverseSpeed { get; set; } = 15f;
             public float TurnSpeed { get; set; } = 15f;
+            public float TurnMultiplier { get; set; } = 5f;
             public float UpdateInterval { get; set; } = 0.1f;
             public float NPCSpacing { get; set; } = 1.5f;
             public float GroundOffset { get; set; } = 0.5f;
+            public float RaycastHeight { get; set; } = 50f;
+            public float RaycastDistance { get; set; } = 100f;
             public float FinaleExplosionForce { get; set; } = 800f;
             public float FinaleSpreadForce { get; set; } = 100f;
             public int CommandCooldown { get; set; } = 5;
@@ -224,8 +226,8 @@ namespace Oxide.Plugins
                 float timeSinceLastCommand = Time.realtimeSinceStartup - train.LastCommandTime;
                 if (timeSinceLastCommand < config.CommandCooldown)
                 {
-                    SendReply(player, string.Format(config.Messages.CommandCooldown, 
-                        (config.CommandCooldown - (int)timeSinceLastCommand).ToString()));
+                    int remainingTime = Mathf.CeilToInt(config.CommandCooldown - timeSinceLastCommand);
+                    SendReply(player, string.Format(config.Messages.CommandCooldown, remainingTime));
                     return;
                 }
             }
@@ -371,12 +373,12 @@ namespace Oxide.Plugins
             // Handle turning
             if (train.IsTurningLeft)
             {
-                train.GhostEngine.transform.Rotate(Vector3.up, -config.TurnSpeed * 5f * config.UpdateInterval);
+                train.GhostEngine.transform.Rotate(Vector3.up, -config.TurnSpeed * config.TurnMultiplier * config.UpdateInterval);
                 train.GhostEngine.SendNetworkUpdate();
             }
             else if (train.IsTurningRight)
             {
-                train.GhostEngine.transform.Rotate(Vector3.up, config.TurnSpeed * 5f * config.UpdateInterval);
+                train.GhostEngine.transform.Rotate(Vector3.up, config.TurnSpeed * config.TurnMultiplier * config.UpdateInterval);
                 train.GhostEngine.SendNetworkUpdate();
             }
         }
@@ -458,8 +460,8 @@ namespace Oxide.Plugins
         private float GetGroundY(Vector3 pos)
         {
             RaycastHit hit;
-            if (Physics.Raycast(new Vector3(pos.x, pos.y + 50f, pos.z), Vector3.down, out hit, 100f, 
-                LayerMask.GetMask("Terrain", "World", "Construction")))
+            if (Physics.Raycast(new Vector3(pos.x, pos.y + config.RaycastHeight, pos.z), Vector3.down, out hit, 
+                config.RaycastDistance, LayerMask.GetMask("Terrain", "World", "Construction")))
             {
                 return hit.point.y;
             }

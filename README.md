@@ -73,9 +73,12 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
   "MoveSpeed": 30.0,
   "ReverseSpeed": 15.0,
   "TurnSpeed": 15.0,
+  "TurnMultiplier": 5.0,
   "UpdateInterval": 0.1,
   "NPCSpacing": 1.5,
   "GroundOffset": 0.5,
+  "RaycastHeight": 50.0,
+  "RaycastDistance": 100.0,
   "FinaleExplosionForce": 800.0,
   "FinaleSpreadForce": 100.0,
   "CommandCooldown": 5,
@@ -101,9 +104,12 @@ The plugin generates a configuration file at `oxide/config/WoundedTrain.json` wi
 | `MoveSpeed` | float | 30.0 | Forward movement speed |
 | `ReverseSpeed` | float | 15.0 | Backward movement speed |
 | `TurnSpeed` | float | 15.0 | Turning speed |
+| `TurnMultiplier` | float | 5.0 | Multiplier for turn speed calculation |
 | `UpdateInterval` | float | 0.1 | Physics update interval in seconds |
 | `NPCSpacing` | float | 1.5 | Distance between NPCs |
 | `GroundOffset` | float | 0.5 | Height offset from ground |
+| `RaycastHeight` | float | 50.0 | Starting height for ground detection raycast |
+| `RaycastDistance` | float | 100.0 | Maximum distance for ground detection raycast |
 | `FinaleExplosionForce` | float | 800.0 | Upward force for finale |
 | `FinaleSpreadForce` | float | 100.0 | Horizontal spread force for finale |
 | `CommandCooldown` | int | 5 | Cooldown between commands in seconds |
