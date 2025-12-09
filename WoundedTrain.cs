@@ -28,6 +28,18 @@ namespace Oxide.Plugins
         private const string GhostPrefab = "assets/prefabs/visualization/sphere.prefab"; 
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
         
+        // Cached gesture IDs to avoid repeated allocation
+        private static readonly uint[] AvailableGestures = new uint[]
+        {
+            GestureCollection.StringToGestureId("wave"),
+            GestureCollection.StringToGestureId("shrug"),
+            GestureCollection.StringToGestureId("victory"),
+            GestureCollection.StringToGestureId("thumbsup"),
+            GestureCollection.StringToGestureId("chicken"),
+            GestureCollection.StringToGestureId("hurry"),
+            GestureCollection.StringToGestureId("whoa")
+        };
+        
         #endregion
         
         #region Configuration
@@ -478,28 +490,6 @@ namespace Oxide.Plugins
             Puts("Captain's Chair spawned successfully.");
             return true;
         }
-
-        private void SpawnNPC(TrainData train, Vector3 localPos)
-        {
-            var npc = GameManager.server.CreateEntity(ScientistPrefab, train.GhostEngine.transform.position) as BasePlayer;
-            if (npc == null)
-            {
-                LogWarning($"Could not spawn NPC! Check prefab path: {ScientistPrefab}");
-                return;
-            }
-
-            npc.Spawn();
-            
-            // Force wounded state
-            npc.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, true);
-            npc.health = 5f; 
-            
-            npc.SetParent(train.GhostEngine);
-            npc.transform.localPosition = localPos;
-            npc.transform.localRotation = Quaternion.Euler(0, 0, 0); 
-            
-            train.NPCs.Add(npc);
-        }
         
         private void SpawnPullerNPC(TrainData train, Vector3 localPos)
         {
@@ -549,7 +539,11 @@ namespace Oxide.Plugins
             {
                 if (npc != null && !npc.IsDestroyed)
                 {
-                    npc.Server_StartGesture(GestureCollection.StringToGestureId("wave"));
+                    uint waveGesture = GestureCollection.StringToGestureId("wave");
+                    if (waveGesture != 0)
+                    {
+                        npc.Server_StartGesture(waveGesture);
+                    }
                 }
             });
         }
@@ -559,28 +553,19 @@ namespace Oxide.Plugins
             if (train == null || train.NPCs == null)
                 return;
             
-            // List of gesture IDs available in Rust
-            uint[] gestures = new uint[]
-            {
-                GestureCollection.StringToGestureId("wave"),
-                GestureCollection.StringToGestureId("shrug"),
-                GestureCollection.StringToGestureId("victory"),
-                GestureCollection.StringToGestureId("thumbsup"),
-                GestureCollection.StringToGestureId("chicken"),
-                GestureCollection.StringToGestureId("hurry"),
-                GestureCollection.StringToGestureId("whoa")
-            };
-            
             foreach (var npc in train.NPCs)
             {
                 if (npc == null || npc.IsDestroyed)
                     continue;
                 
-                // Random chance to perform gesture
+                // Random chance to perform gesture (70% chance)
                 if (UnityEngine.Random.Range(0f, 1f) > 0.3f)
                 {
-                    uint randomGesture = gestures[UnityEngine.Random.Range(0, gestures.Length)];
-                    npc.Server_StartGesture(randomGesture);
+                    uint randomGesture = AvailableGestures[UnityEngine.Random.Range(0, AvailableGestures.Length)];
+                    if (randomGesture != 0)
+                    {
+                        npc.Server_StartGesture(randomGesture);
+                    }
                 }
             }
         }
