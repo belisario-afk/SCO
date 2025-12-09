@@ -1,6 +1,7 @@
 using Oxide.Core;
 using Oxide.Core.Plugins;
 using UnityEngine;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -29,18 +30,18 @@ namespace Oxide.Plugins
         private const string GhostPrefab = "assets/prefabs/visualization/sphere.prefab"; 
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
         
-        // Cached gesture IDs to avoid repeated allocation
-        // Using numeric gesture IDs from Rust game
-        // IDs: 0=Wave, 1=Shrug, 2=Victory, 3=ThumbsUp, 4=Chicken, 5=Hurry, 6=Whoa
-        private static readonly uint[] AvailableGestures = new uint[]
+        // Cached gesture names to avoid repeated allocation
+        // Using actual gesture names from Rust console commands
+        // Available: talk_01-06, hold_relaxed, exclaim_01, hat_tip, cine_kick, cine_push, chicken, drink
+        private static readonly string[] AvailableGestures = new string[]
         {
-            0, // Wave
-            1, // Shrug
-            2, // Victory
-            3, // ThumbsUp
-            4, // Chicken
-            5, // Hurry
-            6  // Whoa
+            "talk_01",
+            "talk_02", 
+            "exclaim_01",
+            "chicken",
+            "drink",
+            "hat_tip",
+            "cine_push"
         };
         
         #endregion
@@ -101,23 +102,33 @@ namespace Oxide.Plugins
             base.LoadConfig();
             try
             {
+                Puts("[DEBUG] LoadConfig: Attempting to read configuration");
                 config = Config.ReadObject<Configuration>();
                 if (config == null)
                 {
+                    Puts("[DEBUG] LoadConfig: Config was null, loading defaults");
                     LoadDefaultConfig();
                 }
+                else
+                {
+                    Puts("[DEBUG] LoadConfig: Configuration loaded successfully");
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                LogWarning($"Error reading config, using default values");
+                LogWarning($"Error reading config: {ex.Message}, using default values");
+                Puts($"[DEBUG] LoadConfig: Exception during config load: {ex}");
                 LoadDefaultConfig();
             }
             SaveConfig();
+            Puts("[DEBUG] LoadConfig: Configuration saved");
         }
         
         protected override void LoadDefaultConfig()
         {
+            Puts("[DEBUG] LoadDefaultConfig: Creating default configuration");
             config = new Configuration();
+            Puts("[DEBUG] LoadDefaultConfig: Default configuration created");
         }
         
         protected override void SaveConfig()
@@ -131,18 +142,29 @@ namespace Oxide.Plugins
 
         private void Init()
         {
+            Puts("[DEBUG] Init: Starting plugin initialization");
+            
             permission.RegisterPermission(PermUse, this);
             permission.RegisterPermission(PermFinale, this);
             permission.RegisterPermission(PermAdmin, this);
             permission.RegisterPermission(PermManager, this);
+            
+            Puts($"[DEBUG] Init: Permissions registered");
             
             // Register commands
             AddCovalenceCommand("humantrain", nameof(CmdHumanTrain));
             AddCovalenceCommand("finale", nameof(CmdFinale));
             AddCovalenceCommand("cleantrain", nameof(CmdCleanTrain));
             
+            Puts("[DEBUG] Init: Commands registered");
             Puts("WoundedTrain v2.1.0 initialized successfully");
             Puts($"Permissions registered: {PermUse}, {PermFinale}, {PermAdmin}, {PermManager}");
+        }
+        
+        private void Loaded()
+        {
+            Puts("[DEBUG] Loaded: Plugin fully loaded and ready");
+            Puts($"[DEBUG] Loaded: Config - TrainLength: {config.TrainLength}, PullerCount: {config.PullerCount}");
         }
 
         private void Unload()
@@ -579,8 +601,24 @@ namespace Oxide.Plugins
             {
                 if (npc != null && !npc.IsDestroyed)
                 {
-                    Puts($"[DEBUG] SpawnSittingNPC: Triggering wave gesture for NPC");
-                    npc.Server_StartGesture(0); // Wave gesture
+                    try
+                    {
+                        Puts($"[DEBUG] SpawnSittingNPC: Triggering talk_01 gesture for NPC");
+                        var gestureInfo = GestureConfig.IdToGesture("talk_01");
+                        if (gestureInfo != null)
+                        {
+                            npc.Server_StartGesture(gestureInfo);
+                            Puts($"[DEBUG] SpawnSittingNPC: Gesture applied successfully");
+                        }
+                        else
+                        {
+                            Puts($"[DEBUG] SpawnSittingNPC: GestureInfo was null for talk_01");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Puts($"[DEBUG] SpawnSittingNPC: Exception applying gesture: {ex.Message}");
+                    }
                 }
             });
             
@@ -592,6 +630,9 @@ namespace Oxide.Plugins
             if (train == null || train.NPCs == null)
                 return;
             
+            Puts($"[DEBUG] PerformRandomGestures: Performing gestures for {train.NPCs.Count} NPCs");
+            int gesturesApplied = 0;
+            
             foreach (var npc in train.NPCs)
             {
                 if (npc == null || npc.IsDestroyed)
@@ -600,10 +641,24 @@ namespace Oxide.Plugins
                 // Random chance to perform gesture (70% chance)
                 if (UnityEngine.Random.Range(0f, 1f) > 0.3f)
                 {
-                    uint randomGesture = AvailableGestures[UnityEngine.Random.Range(0, AvailableGestures.Length)];
-                    npc.Server_StartGesture(randomGesture);
+                    try
+                    {
+                        string randomGestureName = AvailableGestures[UnityEngine.Random.Range(0, AvailableGestures.Length)];
+                        var gestureInfo = GestureConfig.IdToGesture(randomGestureName);
+                        if (gestureInfo != null)
+                        {
+                            npc.Server_StartGesture(gestureInfo);
+                            gesturesApplied++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Puts($"[DEBUG] PerformRandomGestures: Exception: {ex.Message}");
+                    }
                 }
             }
+            
+            Puts($"[DEBUG] PerformRandomGestures: Applied {gesturesApplied} gestures");
         }
 
         private float GetGroundY(Vector3 pos)
