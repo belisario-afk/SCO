@@ -1,0 +1,23 @@
+{
+  "TrainLength": 30,
+  "MoveSpeed": 30.0,
+  "ReverseSpeed": 15.0,
+  "TurnSpeed": 15.0,
+  "UpdateInterval": 0.1,
+  "NPCSpacing": 1.5,
+  "GroundOffset": 0.5,
+  "FinaleExplosionForce": 800.0,
+  "FinaleSpreadForce": 100.0,
+  "CommandCooldown": 5,
+  "AllowReverse": true,
+  "AutoCleanupOnDismount": true,
+  "Messages": {
+    "NoPermission": "You don't have permission to use this command.",
+    "TrainReady": "<color=#ff0000><b>[Human Train]</b></color> The Train is ready! Mount the chair to steer!",
+    "TrainCleaned": "<color=#00ff00>[Human Train]</color> Train has been cleaned up.",
+    "FinaleActivated": "<color=orange>GRAND FINALE!</color>",
+    "NoActiveTrain": "You don't have an active train.",
+    "CommandCooldown": "Please wait {0} seconds before using this command again.",
+    "TrainCreationFailed": "<color=red>Failed to create train. Check server logs.</color>"
+  }
+}

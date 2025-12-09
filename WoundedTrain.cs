@@ -1,150 +1,404 @@
 using Oxide.Core;
 using Oxide.Core.Plugins;
+using Oxide.Core.Configuration;
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Oxide.Plugins
 {
-    [Info("WoundedTrain", "Jess", "1.2.0")]
+    [Info("WoundedTrain", "Jess", "2.0.0")]
     [Description("Creates a human train that you can sit on and steer.")]
     public class WoundedTrain : RustPlugin
     {
-        // --- Permissions & Config ---
+        #region Fields
+        
+        // --- Permissions ---
         private const string PermUse = "woundedtrain.use";
-        private const int TrainLength = 30; 
-        private const float MoveSpeed = 30f; 
-        private const float TurnSpeed = 15f; 
+        private const string PermFinale = "woundedtrain.finale";
+        private const string PermAdmin = "woundedtrain.admin";
+        
+        // --- Configuration ---
+        private Configuration config;
         
         // --- Data ---
-        private List<BasePlayer> activeTrainNPCs = new List<BasePlayer>();
-        private BaseEntity ghostEngine = null;
-        private BaseMountable captainChair = null;
-        private Timer controlTimer;
-        
-        // Input tracking
-        private bool isMovingForward = false;
-        private bool isTurningLeft = false;
-        private bool isTurningRight = false;
+        private Dictionary<ulong, TrainData> activeTrains = new Dictionary<ulong, TrainData>();
         
         // --- Prefabs ---
-        // UPDATED: Using the path you suggested
-        private const string ScientistPrefab = "assets/content/vehicles/horse/horse.corpse.prefab";
+        private const string ScientistPrefab = "assets/prefabs/npc/scientist/scientist.prefab";
         private const string GhostPrefab = "assets/prefabs/visualization/sphere.prefab"; 
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
+        
+        #endregion
+        
+        #region Configuration
+        
+        private class Configuration
+        {
+            public int TrainLength { get; set; } = 30;
+            public float MoveSpeed { get; set; } = 30f;
+            public float ReverseSpeed { get; set; } = 15f;
+            public float TurnSpeed { get; set; } = 15f;
+            public float UpdateInterval { get; set; } = 0.1f;
+            public float NPCSpacing { get; set; } = 1.5f;
+            public float GroundOffset { get; set; } = 0.5f;
+            public float FinaleExplosionForce { get; set; } = 800f;
+            public float FinaleSpreadForce { get; set; } = 100f;
+            public int CommandCooldown { get; set; } = 5;
+            public bool AllowReverse { get; set; } = true;
+            public bool AutoCleanupOnDismount { get; set; } = true;
+            public Messages Messages { get; set; } = new Messages();
+        }
+        
+        private class Messages
+        {
+            public string NoPermission { get; set; } = "You don't have permission to use this command.";
+            public string TrainReady { get; set; } = "<color=#ff0000><b>[Human Train]</b></color> The Train is ready! Mount the chair to steer!";
+            public string TrainCleaned { get; set; } = "<color=#00ff00>[Human Train]</color> Train has been cleaned up.";
+            public string FinaleActivated { get; set; } = "<color=orange>GRAND FINALE!</color>";
+            public string NoActiveTrain { get; set; } = "You don't have an active train.";
+            public string CommandCooldown { get; set; } = "Please wait {0} seconds before using this command again.";
+            public string TrainCreationFailed { get; set; } = "<color=red>Failed to create train. Check server logs.</color>";
+        }
+        
+        private class TrainData
+        {
+            public BasePlayer Owner { get; set; }
+            public List<BasePlayer> NPCs { get; set; } = new List<BasePlayer>();
+            public BaseEntity GhostEngine { get; set; }
+            public BaseMountable CaptainChair { get; set; }
+            public Timer ControlTimer { get; set; }
+            public bool IsMovingForward { get; set; }
+            public bool IsMovingBackward { get; set; }
+            public bool IsTurningLeft { get; set; }
+            public bool IsTurningRight { get; set; }
+            public float LastCommandTime { get; set; }
+        }
+        
+        protected override void LoadConfig()
+        {
+            base.LoadConfig();
+            try
+            {
+                config = Config.ReadObject<Configuration>();
+                if (config == null)
+                {
+                    LoadDefaultConfig();
+                }
+            }
+            catch
+            {
+                LogWarning($"Error reading config, using default values");
+                LoadDefaultConfig();
+            }
+            SaveConfig();
+        }
+        
+        protected override void LoadDefaultConfig()
+        {
+            config = new Configuration();
+        }
+        
+        protected override void SaveConfig()
+        {
+            Config.WriteObject(config);
+        }
+        
+        #endregion
+        
+        #region Oxide Hooks
 
         private void Init()
         {
             permission.RegisterPermission(PermUse, this);
+            permission.RegisterPermission(PermFinale, this);
+            permission.RegisterPermission(PermAdmin, this);
+            
+            // Register commands
+            AddCovalenceCommand("humantrain", nameof(CmdHumanTrain));
+            AddCovalenceCommand("finale", nameof(CmdFinale));
+            AddCovalenceCommand("cleantrain", nameof(CmdCleanTrain));
         }
 
         private void Unload()
         {
-            CleanupTrain();
+            // Cleanup all active trains
+            foreach (var train in activeTrains.Values.ToList())
+            {
+                CleanupTrain(train);
+            }
+            activeTrains.Clear();
         }
 
         object OnEntityTakeDamage(BaseCombatEntity entity, HitInfo info)
         {
-            if (entity is BasePlayer player && activeTrainNPCs.Contains(player)) return true;
-            if (entity == captainChair) return true; 
+            // Check if entity is part of any train
+            foreach (var train in activeTrains.Values)
+            {
+                if (entity is BasePlayer player && train.NPCs.Contains(player))
+                    return true;
+                if (entity == train.CaptainChair)
+                    return true;
+                if (entity == train.GhostEngine)
+                    return true;
+            }
             return null;
         }
 
         object OnWoundedRecover(BasePlayer player)
         {
-            if (activeTrainNPCs.Contains(player)) return true; 
+            // Prevent NPCs from recovering
+            foreach (var train in activeTrains.Values)
+            {
+                if (train.NPCs.Contains(player))
+                    return true;
+            }
             return null;
         }
 
         void OnPlayerInput(BasePlayer player, InputState input)
         {
-            if (captainChair == null || !player.GetMounted() || player.GetMounted() != captainChair)
+            if (player == null || input == null)
+                return;
+            
+            // Find train where this player is the captain
+            TrainData train = null;
+            foreach (var t in activeTrains.Values)
+            {
+                if (t.CaptainChair != null && player.GetMounted() == t.CaptainChair)
+                {
+                    train = t;
+                    break;
+                }
+            }
+            
+            if (train == null)
                 return;
 
-            isMovingForward = input.IsDown(BUTTON.FORWARD);
-            isTurningLeft = input.IsDown(BUTTON.LEFT);
-            isTurningRight = input.IsDown(BUTTON.RIGHT);
+            train.IsMovingForward = input.IsDown(BUTTON.FORWARD);
+            train.IsMovingBackward = config.AllowReverse && input.IsDown(BUTTON.BACKWARD);
+            train.IsTurningLeft = input.IsDown(BUTTON.LEFT);
+            train.IsTurningRight = input.IsDown(BUTTON.RIGHT);
         }
+        
+        void OnPlayerDismounted(BasePlayer player, BaseMountable entity)
+        {
+            if (!config.AutoCleanupOnDismount || player == null)
+                return;
+            
+            // Check if player dismounted from a train chair
+            TrainData train = null;
+            foreach (var t in activeTrains.Values)
+            {
+                if (t.CaptainChair == entity)
+                {
+                    train = t;
+                    break;
+                }
+            }
+            
+            if (train != null)
+            {
+                SendReply(player, config.Messages.TrainCleaned);
+                timer.Once(0.5f, () => CleanupTrain(train));
+            }
+        }
+        
+        #endregion
+        
+        #region Commands
 
         [ChatCommand("humantrain")]
         private void CmdHumanTrain(BasePlayer player, string command, string[] args)
         {
-            if (!permission.UserHasPermission(player.UserIDString, PermUse))
+            if (!HasPermission(player, PermUse))
             {
-                SendReply(player, "No permission.");
+                SendReply(player, config.Messages.NoPermission);
                 return;
             }
-
-            CleanupTrain();
-            Puts("Starting Human Train creation..."); // Debug Log
-
-            // 1. Spawn the "Ghost Engine"
-            Vector3 spawnPos = player.transform.position + (player.transform.forward * 3f);
-            spawnPos.y = GetGroundY(spawnPos) + 0.5f; // Lift it slightly so it doesn't clip underground
             
-            ghostEngine = GameManager.server.CreateEntity(GhostPrefab, spawnPos);
-            if (ghostEngine == null)
+            // Check cooldown
+            if (activeTrains.ContainsKey(player.userID))
             {
-                Puts("ERROR: Could not spawn Ghost Engine!");
-                return;
-            }
-            ghostEngine.Spawn();
-            Puts("Ghost Engine Spawned.");
-
-            // 2. Spawn the Captain's Chair
-            SpawnChair(ghostEngine);
-
-            // 3. Spawn the Line of Crawlers
-            for (int i = 0; i < TrainLength; i++)
-            {
-                Vector3 offset = new Vector3(0, 0, -2f - (i * 1.5f)); 
-                SpawnCrawler(ghostEngine, offset);
-            }
-
-            SendReply(player, "<color=#ff0000><b>[Killa Dome]</b></color> The Train is ready! Mount the chair to steer!");
-
-            // 4. Start Physics Loop
-            controlTimer = timer.Repeat(0.1f, -1, () =>
-            {
-                if (ghostEngine == null || ghostEngine.IsDestroyed) 
+                var train = activeTrains[player.userID];
+                float timeSinceLastCommand = Time.realtimeSinceStartup - train.LastCommandTime;
+                if (timeSinceLastCommand < config.CommandCooldown)
                 {
-                    CleanupTrain();
+                    SendReply(player, string.Format(config.Messages.CommandCooldown, 
+                        (config.CommandCooldown - (int)timeSinceLastCommand).ToString()));
                     return;
                 }
+            }
 
-                if (isMovingForward)
-                {
-                    Vector3 currentPos = ghostEngine.transform.position;
-                    Vector3 moveDir = ghostEngine.transform.forward * MoveSpeed * 0.1f;
-                    Vector3 newPos = currentPos + moveDir;
-                    newPos.y = GetGroundY(newPos) + 0.5f; // Keep it above ground
-                    ghostEngine.transform.position = newPos;
-                    ghostEngine.SendNetworkUpdate();
-                }
+            // Cleanup existing train if any
+            if (activeTrains.ContainsKey(player.userID))
+            {
+                CleanupTrain(activeTrains[player.userID]);
+            }
+            
+            Puts($"Player {player.displayName} is creating a Human Train...");
 
-                if (isTurningLeft)
-                {
-                    ghostEngine.transform.Rotate(Vector3.up, -TurnSpeed * 5f);
-                    ghostEngine.SendNetworkUpdate();
-                }
-                else if (isTurningRight)
-                {
-                    ghostEngine.transform.Rotate(Vector3.up, TurnSpeed * 5f);
-                    ghostEngine.SendNetworkUpdate();
-                }
-            });
+            if (!CreateTrain(player))
+            {
+                SendReply(player, config.Messages.TrainCreationFailed);
+                return;
+            }
+
+            SendReply(player, config.Messages.TrainReady);
         }
 
         [ChatCommand("finale")]
         private void CmdFinale(BasePlayer player, string command, string[] args)
         {
-            if (activeTrainNPCs.Count == 0) return;
-
-            if (controlTimer != null) controlTimer.Destroy();
-            if (ghostEngine != null) ghostEngine.Kill(); 
-
-            foreach (var npc in activeTrainNPCs)
+            if (!HasPermission(player, PermFinale))
             {
-                if (npc == null) continue;
+                SendReply(player, config.Messages.NoPermission);
+                return;
+            }
+            
+            if (!activeTrains.ContainsKey(player.userID))
+            {
+                SendReply(player, config.Messages.NoActiveTrain);
+                return;
+            }
+
+            var train = activeTrains[player.userID];
+            ExecuteFinale(train);
+            SendReply(player, config.Messages.FinaleActivated);
+        }
+        
+        [ChatCommand("cleantrain")]
+        private void CmdCleanTrain(BasePlayer player, string command, string[] args)
+        {
+            if (!HasPermission(player, PermUse))
+            {
+                SendReply(player, config.Messages.NoPermission);
+                return;
+            }
+            
+            if (!activeTrains.ContainsKey(player.userID))
+            {
+                SendReply(player, config.Messages.NoActiveTrain);
+                return;
+            }
+
+            CleanupTrain(activeTrains[player.userID]);
+            SendReply(player, config.Messages.TrainCleaned);
+        }
+        
+        #endregion
+        
+        #region Helper Methods
+        
+        private bool HasPermission(BasePlayer player, string perm)
+        {
+            return permission.UserHasPermission(player.UserIDString, perm);
+        }
+        
+        private bool CreateTrain(BasePlayer player)
+        {
+            var train = new TrainData
+            {
+                Owner = player,
+                LastCommandTime = Time.realtimeSinceStartup
+            };
+
+            // 1. Spawn the Ghost Engine
+            Vector3 spawnPos = player.transform.position + (player.transform.forward * 3f);
+            spawnPos.y = GetGroundY(spawnPos) + config.GroundOffset;
+            
+            train.GhostEngine = GameManager.server.CreateEntity(GhostPrefab, spawnPos);
+            if (train.GhostEngine == null)
+            {
+                LogError("Could not spawn Ghost Engine!");
+                return false;
+            }
+            train.GhostEngine.Spawn();
+            Puts("Ghost Engine spawned successfully.");
+
+            // 2. Spawn the Captain's Chair
+            if (!SpawnChair(train))
+            {
+                CleanupTrain(train);
+                return false;
+            }
+
+            // 3. Spawn the Line of NPCs
+            for (int i = 0; i < config.TrainLength; i++)
+            {
+                Vector3 offset = new Vector3(0, 0, -2f - (i * config.NPCSpacing)); 
+                SpawnNPC(train, offset);
+            }
+
+            // 4. Start Physics Loop
+            train.ControlTimer = timer.Repeat(config.UpdateInterval, -1, () =>
+            {
+                UpdateTrainPhysics(train);
+            });
+            
+            activeTrains[player.userID] = train;
+            return true;
+        }
+        
+        private void UpdateTrainPhysics(TrainData train)
+        {
+            if (train.GhostEngine == null || train.GhostEngine.IsDestroyed)
+            {
+                CleanupTrain(train);
+                return;
+            }
+
+            // Handle forward/backward movement
+            if (train.IsMovingForward)
+            {
+                Vector3 currentPos = train.GhostEngine.transform.position;
+                Vector3 moveDir = train.GhostEngine.transform.forward * config.MoveSpeed * config.UpdateInterval;
+                Vector3 newPos = currentPos + moveDir;
+                newPos.y = GetGroundY(newPos) + config.GroundOffset;
+                train.GhostEngine.transform.position = newPos;
+                train.GhostEngine.SendNetworkUpdate();
+            }
+            else if (train.IsMovingBackward)
+            {
+                Vector3 currentPos = train.GhostEngine.transform.position;
+                Vector3 moveDir = train.GhostEngine.transform.forward * config.ReverseSpeed * config.UpdateInterval;
+                Vector3 newPos = currentPos - moveDir;
+                newPos.y = GetGroundY(newPos) + config.GroundOffset;
+                train.GhostEngine.transform.position = newPos;
+                train.GhostEngine.SendNetworkUpdate();
+            }
+
+            // Handle turning
+            if (train.IsTurningLeft)
+            {
+                train.GhostEngine.transform.Rotate(Vector3.up, -config.TurnSpeed * 5f * config.UpdateInterval);
+                train.GhostEngine.SendNetworkUpdate();
+            }
+            else if (train.IsTurningRight)
+            {
+                train.GhostEngine.transform.Rotate(Vector3.up, config.TurnSpeed * 5f * config.UpdateInterval);
+                train.GhostEngine.SendNetworkUpdate();
+            }
+        }
+        
+        private void ExecuteFinale(TrainData train)
+        {
+            if (train.ControlTimer != null)
+            {
+                train.ControlTimer.Destroy();
+                train.ControlTimer = null;
+            }
+            
+            if (train.GhostEngine != null && !train.GhostEngine.IsDestroyed)
+            {
+                train.GhostEngine.Kill();
+                train.GhostEngine = null;
+            }
+
+            foreach (var npc in train.NPCs)
+            {
+                if (npc == null || npc.IsDestroyed)
+                    continue;
 
                 npc.SetParent(null, true, true);
 
@@ -153,77 +407,111 @@ namespace Oxide.Plugins
                 {
                     rb.isKinematic = false; 
                     rb.useGravity = true;
-                    Vector3 randomSpread = UnityEngine.Random.onUnitSphere * 100f;
-                    rb.AddForce(Vector3.up * 800f + randomSpread, ForceMode.Impulse); 
+                    Vector3 randomSpread = UnityEngine.Random.onUnitSphere * config.FinaleSpreadForce;
+                    rb.AddForce(Vector3.up * config.FinaleExplosionForce + randomSpread, ForceMode.Impulse); 
                 }
+                
                 Effect.server.Run("assets/bundled/prefabs/fx/gestures/guitarpluck.prefab", npc.transform.position);
             }
 
-            SendReply(player, "<color=orange>GRAND FINALE!</color>");
-            timer.Once(5f, () => CleanupTrain());
+            timer.Once(5f, () => CleanupTrain(train));
         }
 
-        private void SpawnChair(BaseEntity parent)
+        private bool SpawnChair(TrainData train)
         {
-            captainChair = GameManager.server.CreateEntity(ChairPrefab, parent.transform.position) as BaseMountable;
-            if (captainChair == null)
+            train.CaptainChair = GameManager.server.CreateEntity(ChairPrefab, train.GhostEngine.transform.position) as BaseMountable;
+            if (train.CaptainChair == null)
             {
-                Puts("ERROR: Could not spawn Chair!");
-                return;
+                LogError("Could not spawn Captain's Chair!");
+                return false;
             }
             
-            captainChair.SetParent(parent);
-            captainChair.transform.localPosition = new Vector3(0, 0, 0); 
-            captainChair.Spawn();
-            Puts("Chair Spawned.");
+            train.CaptainChair.SetParent(train.GhostEngine);
+            train.CaptainChair.transform.localPosition = new Vector3(0, 0, 0); 
+            train.CaptainChair.Spawn();
+            Puts("Captain's Chair spawned successfully.");
+            return true;
         }
 
-        private void SpawnCrawler(BaseEntity parent, Vector3 localPos)
+        private void SpawnNPC(TrainData train, Vector3 localPos)
         {
-            var npc = GameManager.server.CreateEntity(ScientistPrefab, parent.transform.position) as BasePlayer;
+            var npc = GameManager.server.CreateEntity(ScientistPrefab, train.GhostEngine.transform.position) as BasePlayer;
             if (npc == null)
             {
-                Puts($"ERROR: Could not spawn Scientist! Check Prefab Path: {ScientistPrefab}");
+                LogWarning($"Could not spawn NPC! Check prefab path: {ScientistPrefab}");
                 return;
             }
 
             npc.Spawn();
             
-            // Force Wounded
+            // Force wounded state
             npc.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, true);
             npc.health = 5f; 
             
-            npc.SetParent(parent);
+            npc.SetParent(train.GhostEngine);
             npc.transform.localPosition = localPos;
             npc.transform.localRotation = Quaternion.Euler(0, 0, 0); 
             
-            activeTrainNPCs.Add(npc);
+            train.NPCs.Add(npc);
         }
 
         private float GetGroundY(Vector3 pos)
         {
             RaycastHit hit;
-            if (Physics.Raycast(new Vector3(pos.x, pos.y + 50f, pos.z), Vector3.down, out hit, 100f, LayerMask.GetMask("Terrain", "World", "Construction")))
+            if (Physics.Raycast(new Vector3(pos.x, pos.y + 50f, pos.z), Vector3.down, out hit, 100f, 
+                LayerMask.GetMask("Terrain", "World", "Construction")))
             {
                 return hit.point.y;
             }
             return pos.y; 
         }
 
-        private void CleanupTrain()
+        private void CleanupTrain(TrainData train)
         {
-            if (controlTimer != null) controlTimer.Destroy();
-
-            foreach (var npc in activeTrainNPCs)
+            if (train == null)
+                return;
+            
+            if (train.ControlTimer != null)
             {
-                if (npc != null && !npc.IsDestroyed) npc.Kill();
+                train.ControlTimer.Destroy();
+                train.ControlTimer = null;
             }
-            activeTrainNPCs.Clear();
 
-            if (ghostEngine != null && !ghostEngine.IsDestroyed)
+            foreach (var npc in train.NPCs)
             {
-                ghostEngine.Kill();
+                if (npc != null && !npc.IsDestroyed)
+                    npc.Kill();
+            }
+            train.NPCs.Clear();
+
+            if (train.CaptainChair != null && !train.CaptainChair.IsDestroyed)
+            {
+                train.CaptainChair.Kill();
+                train.CaptainChair = null;
+            }
+
+            if (train.GhostEngine != null && !train.GhostEngine.IsDestroyed)
+            {
+                train.GhostEngine.Kill();
+                train.GhostEngine = null;
+            }
+            
+            if (train.Owner != null && activeTrains.ContainsKey(train.Owner.userID))
+            {
+                activeTrains.Remove(train.Owner.userID);
             }
         }
+        
+        private void LogError(string message)
+        {
+            Puts($"ERROR: {message}");
+        }
+        
+        private void LogWarning(string message)
+        {
+            Puts($"WARNING: {message}");
+        }
+        
+        #endregion
     }
 }
