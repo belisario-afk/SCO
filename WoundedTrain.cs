@@ -107,9 +107,28 @@ namespace Oxide.Plugins
             public float LastCommandTime { get; set; }
         }
         
+        // Constructor - fires immediately when plugin class is instantiated
+        public WoundedTrain()
+        {
+            try
+            {
+                Name = "WoundedTrain";
+                Title = "Wounded Train";
+                Author = "Jess";
+                Version = new VersionNumber(2, 1, 0);
+            }
+            catch
+            {
+                // Constructor failed - plugin won't load
+            }
+        }
+        
         protected override void LoadConfig()
         {
             base.LoadConfig();
+            Puts("===============================================");
+            Puts("WoundedTrain - LoadConfig STARTED");
+            Puts("===============================================");
             try
             {
                 Puts("[DEBUG] LoadConfig: Attempting to read configuration");
@@ -127,11 +146,14 @@ namespace Oxide.Plugins
             catch (Exception ex)
             {
                 LogWarning($"Error reading config: {ex.Message}, using default values");
-                Puts($"[DEBUG] LoadConfig: Exception during config load: {ex}");
+                Puts($"[ERROR] LoadConfig: Exception during config load: {ex}");
                 LoadDefaultConfig();
             }
             SaveConfig();
             Puts("[DEBUG] LoadConfig: Configuration saved");
+            Puts("===============================================");
+            Puts("WoundedTrain - LoadConfig COMPLETED");
+            Puts("===============================================");
         }
         
         protected override void LoadDefaultConfig()
@@ -152,29 +174,46 @@ namespace Oxide.Plugins
 
         private void Init()
         {
+            Puts("===============================================");
+            Puts("WoundedTrain v2.1.0 - INIT STARTED");
+            Puts("===============================================");
             Puts("[DEBUG] Init: Starting plugin initialization");
             
-            permission.RegisterPermission(PermUse, this);
-            permission.RegisterPermission(PermFinale, this);
-            permission.RegisterPermission(PermAdmin, this);
-            permission.RegisterPermission(PermManager, this);
+            try
+            {
+                permission.RegisterPermission(PermUse, this);
+                permission.RegisterPermission(PermFinale, this);
+                permission.RegisterPermission(PermAdmin, this);
+                permission.RegisterPermission(PermManager, this);
+                
+                Puts($"[DEBUG] Init: Permissions registered successfully");
+                Puts($"  - {PermUse}");
+                Puts($"  - {PermFinale}");
+                Puts($"  - {PermAdmin}");
+                Puts($"  - {PermManager}");
+            }
+            catch (Exception ex)
+            {
+                Puts($"[ERROR] Init: Failed to register permissions: {ex.Message}");
+            }
             
-            Puts($"[DEBUG] Init: Permissions registered");
-            
-            // Register commands
-            AddCovalenceCommand("humantrain", nameof(CmdHumanTrain));
-            AddCovalenceCommand("finale", nameof(CmdFinale));
-            AddCovalenceCommand("cleantrain", nameof(CmdCleanTrain));
-            
-            Puts("[DEBUG] Init: Commands registered");
-            Puts("WoundedTrain v2.1.0 initialized successfully");
-            Puts($"Permissions registered: {PermUse}, {PermFinale}, {PermAdmin}, {PermManager}");
+            Puts("[DEBUG] Init: Commands will be registered via [ChatCommand] attributes");
+            Puts("===============================================");
+            Puts("WoundedTrain v2.1.0 - INIT COMPLETED");
+            Puts("===============================================");
         }
         
         private void Loaded()
         {
+            Puts("===============================================");
+            Puts("WoundedTrain v2.1.0 - LOADED HOOK FIRED");
+            Puts("===============================================");
             Puts("[DEBUG] Loaded: Plugin fully loaded and ready");
             Puts($"[DEBUG] Loaded: Config - TrainLength: {config.TrainLength}, PullerCount: {config.PullerCount}");
+            Puts($"[DEBUG] Loaded: ActiveTrains dictionary initialized");
+            Puts("===============================================");
+            Puts("PLUGIN IS READY - Try /humantrain or /wtttest");
+            Puts("===============================================");
         }
 
         private void Unload()
@@ -264,10 +303,23 @@ namespace Oxide.Plugins
         #endregion
         
         #region Commands
+        
+        [ChatCommand("wtttest")]
+        private void CmdTest(BasePlayer player, string command, string[] args)
+        {
+            Puts("===============================================");
+            Puts($"TEST COMMAND EXECUTED by {player.displayName}");
+            Puts("===============================================");
+            SendReply(player, "<color=green>WoundedTrain plugin is loaded and responding!</color>");
+            SendReply(player, $"<color=yellow>Try /humantrain to create a train</color>");
+        }
 
         [ChatCommand("humantrain")]
         private void CmdHumanTrain(BasePlayer player, string command, string[] args)
         {
+            Puts("===============================================");
+            Puts($"HUMANTRAIN COMMAND EXECUTED by {player.displayName} ({player.userID})");
+            Puts("===============================================");
             Puts($"[DEBUG] Player {player.displayName} ({player.userID}) executed /humantrain command");
             
             if (!HasPermission(player, PermUse))
