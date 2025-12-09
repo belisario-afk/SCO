@@ -30,18 +30,28 @@ namespace Oxide.Plugins
         private const string GhostPrefab = "assets/prefabs/visualization/sphere.prefab"; 
         private const string ChairPrefab = "assets/prefabs/deployable/chair/chair.deployed.prefab";
         
-        // Cached gesture names to avoid repeated allocation
-        // Using actual gesture names from Rust console commands
-        // Available: talk_01-06, hold_relaxed, exclaim_01, hat_tip, cine_kick, cine_push, chicken, drink
-        private static readonly string[] AvailableGestures = new string[]
+        // Gesture ID mapping based on Rust console gesture names
+        // These are the actual gesture IDs used by Rust
+        private static readonly Dictionary<string, uint> GestureIds = new Dictionary<string, uint>
         {
-            "talk_01",
-            "talk_02", 
-            "exclaim_01",
-            "chicken",
-            "drink",
-            "hat_tip",
-            "cine_push"
+            { "wave", 0 },
+            { "shrug", 1 },
+            { "victory", 2 },
+            { "thumbsup", 3 },
+            { "chicken", 4 },
+            { "hurry", 5 },
+            { "whoa", 6 }
+        };
+        
+        // Available gestures to use (subset of all available gestures)
+        private static readonly uint[] AvailableGestures = new uint[]
+        {
+            0, // wave
+            1, // shrug
+            2, // victory
+            4, // chicken
+            5, // hurry
+            6  // whoa
         };
         
         #endregion
@@ -603,17 +613,9 @@ namespace Oxide.Plugins
                 {
                     try
                     {
-                        Puts($"[DEBUG] SpawnSittingNPC: Triggering talk_01 gesture for NPC");
-                        var gestureInfo = GestureConfig.IdToGesture("talk_01");
-                        if (gestureInfo != null)
-                        {
-                            npc.Server_StartGesture(gestureInfo);
-                            Puts($"[DEBUG] SpawnSittingNPC: Gesture applied successfully");
-                        }
-                        else
-                        {
-                            Puts($"[DEBUG] SpawnSittingNPC: GestureInfo was null for talk_01");
-                        }
+                        Puts($"[DEBUG] SpawnSittingNPC: Triggering wave gesture (ID: 0) for NPC");
+                        npc.Server_StartGesture(0u); // Wave gesture
+                        Puts($"[DEBUG] SpawnSittingNPC: Gesture applied successfully");
                     }
                     catch (Exception ex)
                     {
@@ -643,13 +645,9 @@ namespace Oxide.Plugins
                 {
                     try
                     {
-                        string randomGestureName = AvailableGestures[UnityEngine.Random.Range(0, AvailableGestures.Length)];
-                        var gestureInfo = GestureConfig.IdToGesture(randomGestureName);
-                        if (gestureInfo != null)
-                        {
-                            npc.Server_StartGesture(gestureInfo);
-                            gesturesApplied++;
-                        }
+                        uint randomGestureId = AvailableGestures[UnityEngine.Random.Range(0, AvailableGestures.Length)];
+                        npc.Server_StartGesture(randomGestureId);
+                        gesturesApplied++;
                     }
                     catch (Exception ex)
                     {
